@@ -1,27 +1,112 @@
 import sys
+import os
+import hashlib
+import json
+import time
 import subprocess
 import traceback
+from time import sleep
 from PyQt5.QtCore import *
+from PyQt5.QtWebEngineCore import QWebEngineUrlRequestInterceptor
 from PyQt5.QtWidgets import *
 from PyQt5.QtWebEngineWidgets import *
 from PyQt5.QtGui import QIcon
 
-
 # C:\Users\username\AppData\Local\Navalii Browser\QtWebEngine\Default
+blockerSites = [
+    "tpc.googlesyndication.com/simgad/",
+    "adclick.g.doubleclick.net/",
+    "googleads.g.doubleclick.net",
+    'https://s0.2mdn.net/simgad/',
+    "https://static.pc-adroute",
+    "adroute",
+    "https://img.gsspat.jp",
+
+    'ezoic',
+    "google_image",
+    'ad_unit',
+    'google_image_div',
+    'GoogleActiveViewElement',
+    "amznBanners_assoc_banner",
+    "google_ads",
+    "gnpbad_",
+]
+
+
+def cls():
+    """
+    Clears the screen.
+    """
+    os.system('cls' if os.name == 'nt' else 'clear')
+
+
+class Logger:
+    """
+    Logger.
+    """
+
+    def __init__(self):
+        self.name = "NAVA"
+
+    def info(self, text: str | None) -> None:
+        """
+        For general information.
+        """
+        if not text:
+            return
+
+        print(f"[{time.strftime('%H:%M:%S')}] {self.name}: " + text)
+        sys.stdout.flush()
+
+    def warn(self, text: str | None) -> None:
+        """
+        For less serious, but still noteworthy problems.
+        """
+        if not text:
+            return
+
+        print(f"[{time.strftime('%H:%M:%S')}] {self.name}:WARNING: " + text)
+        sys.stdout.flush()
+
+    def error(self, text: str | None) -> None:
+        """
+        For critical bugs, usually followed by the program halting or the process restarting.
+        """
+        if not text:
+            return
+
+        print(f"[{time.strftime('%H:%M:%S')}] {self.name}:ERROR: " + text)
+        sys.stdout.flush()
+
+
+log = Logger()
+
+
+class NavaRequestInterceptor(QWebEngineUrlRequestInterceptor):
+    def interceptRequest(self, info):
+        url = info.requestUrl().toString()
+        for site in blockerSites:
+            if site in url:
+                # Block the request by setting it to an empty URL
+                log.info(f"Blocked request to black-listed URL: {url}")
+
+                info.redirect(QUrl("about:blank"))
+
 
 class MainWindow(QMainWindow):
-    def __init__(self):
+    def __init__(self, nava, config, web_view):
         sys.excepthook = self.excepthook
 
         super(MainWindow, self).__init__()
-        self.browser = QWebEngineView()
+        self.browser = web_view
 
-        self.setCentralWidget(self.browser)
-
-        self.home = "https://zeropointnothing.github.io"
-        self.version = "v0.0.1 ALPHA"
+        self.home = "https://zeropointnothing.github.io" if not config["browser"]["home"] else config["browser"]["home"]
+        self.version = "v0.0.2-alpha"
+        self.config = config
+        self.navacfg = nava
 
         self.browser.setUrl(QUrl(self.home))
+        self.setCentralWidget(self.browser)
 
         self.showMaximized()
 
@@ -88,7 +173,12 @@ class MainWindow(QMainWindow):
         self.update_title("Loading...")
 
         if not url.startswith("https://"):
-            url = "https://www.google.com/search?q=" + url
+            # If the user has set the search-non-valid key to True, search for any non valid urls.
+            # else, assume it was supposed to be a link.
+            if self.config["browser"]["default_search-non-valid"]:
+                url = "https://www.google.com/search?q=" + url
+            else:
+                url = "https://" + url
 
         self.browser.setUrl(QUrl(url))
 
@@ -101,7 +191,7 @@ class MainWindow(QMainWindow):
     def on_downloadRequested(self, download):
         old_path = download.path()
         suffix = QFileInfo(old_path).suffix()
-        path, _ = QFileDialog.getSaveFileName(self.browser.page().view(), "Save File", old_path, "*."+suffix)
+        path, _ = QFileDialog.getSaveFileName(self.browser.page().view(), "Save File", old_path, "*." + suffix)
         if path:
             download.setPath(path)
             download.accept()
@@ -131,13 +221,109 @@ class MainWindow(QMainWindow):
         sys.exit()
 
 
+def initNavalii():
+    """
+    Setup function for Navlii.
+    :return:
+    """
+    if not os.path.isfile("./nava.json"):
+        print("Unable to load Navalii config. Entering setup mode.")
+        sleep(3)
+
+        cls()
+
+        print("Welcome!")
+        print("This setup utility will get you ready for browsing on Navlii!")
+        print()
+        print("First, let's set up your account. This is just local and is used to store your Favorites and "
+              "customization.")
+
+        print()
+        username = input("Enter a username: ")
+        password = input("Enter a password or leave it blank for none: ")
+
+        print()
+        print(f"{username} is a wonderful name!")
+        print("Give us a second to prepare some files...")
+        sleep(2)
+
+        if password:
+            password = hashlib.new("sha256", password.encode()).hexdigest()
+        else:
+            password = None
+
+        with open("./nava.json", "w") as f:
+            json.dump(
+                {"user":
+                    {
+                        "name": username,
+                        "password": password,
+                        "bookmarks": []
+                    }
+                },
+                f)
+
+        with open("./config.json", "w") as f:
+            json.dump({
+                "browser": {
+                    "home": None,
+                    "s-engine": "google",
+                    "default_search-non-valid": True,
+                    "default_block-ad-urls": False
+                }
+            }, f)
+
+        cls()
+        print("Done!")
+        print()
+        print(f"Welcome, {username}, to your Navlii.")
+        sleep(4)
+        cls()
+
+    if not os.path.isfile("./config.json"):
+        raise FileNotFoundError("nava config was found, but user config was not. Code: c:001")
+
+    with open("./nava.json", "r") as f:
+        navadat = json.load(f)
+    with open("./config.json", "r") as f:
+        configdat = json.load(f)
+
+    return {"nava": navadat, "config": configdat}
+
+
+initdata = initNavalii()
+
+if initdata["nava"]["user"]["password"]:
+    print("This account requires a password to log in.")
+    password = input("Please input your password: ")
+    password = hashlib.new("sha256", password.encode()).hexdigest()
+
+    if password != initdata["nava"]["user"]["password"]:
+        print("Incorrect password!")
+        sleep(2)
+        sys.exit()
+    print()
+
 app = QApplication(sys.argv)
 QApplication.setApplicationName("Navalii Browser")
 app.setWindowIcon(QIcon("assets/navalii_icon.png"))
 
-window = MainWindow()
+web_view = QWebEngineView()
 
-print("Welcome to Navalii!")
+
+if initdata["config"]["browser"]["default_block-ad-urls"]:
+    if os.path.isfile("./bl.json"):
+        with open("./bl.json", "r") as f:
+            data = json.load(f)
+
+            # Funnel all requests through this function to filter them for ads.
+            blockerSites.append(*data)
+            request_interceptor = NavaRequestInterceptor()
+            web_view.page().profile().setRequestInterceptor(request_interceptor)
+
+window = MainWindow(initdata["nava"], initdata["config"], web_view)
+
+print(f"Welcome to Navalii, {initdata['nava']['user']['name']}!")
 print()
 print(f"Running version {window.version}")
 print("Note: This is a debug console tied to the main window. You may see many errors or warnings from Javascript.")
@@ -145,4 +331,4 @@ print("You can ignore these unless they are crash related.")
 print("In future versions, this console window will be hidden.")
 print()
 
-app.exec_()
+sys.exit(app.exec_())
