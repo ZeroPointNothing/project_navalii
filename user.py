@@ -36,8 +36,9 @@ class NavaRequests:
 
         try:
             r = requests.post(self.API_BASE_LOCATION + path, json=json)
-        except requests.exceptions.ConnectionError as err:
-            print("Unable to connect to the Navalii API. Make sure you're connected to the internet!")
+        except requests.exceptions.ConnectionError:
+            raise ConnectionError("Unable to connect to the Navalii API. Make sure you're connected to the internet!")
+            
 
         if r.status_code == 401 and r.json()["detail"] == "Access Denied: Invalid auth code!":
             raise self.APIAuthorizationError(f"Unable to authorize your client!")
