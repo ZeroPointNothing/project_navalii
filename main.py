@@ -3,9 +3,11 @@ import os
 import hashlib
 import json
 import time
-import subprocess
 import traceback
 from time import sleep
+import tkinter as tk
+import user
+from tkinter import messagebox
 from PyQt5.QtCore import *
 from PyQt5.QtWebEngineCore import QWebEngineUrlRequestInterceptor
 from PyQt5.QtWidgets import *
@@ -21,7 +23,7 @@ blockerSites = [
     "https://static.pc-adroute",
     "adroute",
     "https://img.gsspat.jp",
-
+    "https://dsp.logly.co.jp/click?ad"
     'ezoic',
     "google_image",
     'ad_unit',
@@ -38,6 +40,23 @@ def cls():
     Clears the screen.
     """
     os.system('cls' if os.name == 'nt' else 'clear')
+
+
+def show_error_message(message, trc):
+    """
+    Takes a traceback message and handles the error.
+    """
+    root = tk.Tk()
+    root.withdraw()  # Hide the main window
+
+    messagebox.showerror("Error", message)
+
+    # Get our line breaks back.
+    trc = trc.replace("lnbrk", "\n")
+
+    with open('traceback.txt', 'w') as f:
+        f.write(f"[{time.ctime()}] Ouch!\n- - - - An exception occured: - - - -\n")
+        f.write(trc)
 
 
 class Logger:
@@ -84,6 +103,9 @@ log = Logger()
 
 class NavaRequestInterceptor(QWebEngineUrlRequestInterceptor):
     def interceptRequest(self, info):
+        """
+        Override the default function to block certain urls from connecting.
+        """
         url = info.requestUrl().toString()
         for site in blockerSites:
             if site in url:
@@ -211,105 +233,24 @@ class MainWindow(QMainWindow):
         # Replace line breaks with lnbrk
         full_exception = full_exception.replace("\n", "lnbrk")
 
-        # Hand over the error handling to error.py so the VoxelEngine can completely shut down.
-        subprocess.Popen(
-            ["start", "cmd", "/k", "python", "./assets/error.py", "--fullexc", full_exception, "--details",
-             f"{exctype.__name__}: {value}"],
-            shell=True,
-        )
+        # Close the window.
+        self.close()
+
+        # Show the error message.
+        log.error("Navalii ran into an issue and had to shutdown. Check traceback.txt for more info.\n\n\n")
+        show_error_message(f"Oh no! An error occurred!!\n\n{exctype.__name__}: {value}", full_exception)
 
         sys.exit()
 
 
-def initNavalii():
-    """
-    Setup function for Navlii.
-    :return:
-    """
-    if not os.path.isfile("./nava.json"):
-        print("Unable to load Navalii config. Entering setup mode.")
-        sleep(3)
-
-        cls()
-
-        print("Welcome!")
-        print("This setup utility will get you ready for browsing on Navlii!")
-        print()
-        print("First, let's set up your account. This is just local and is used to store your Favorites and "
-              "customization.")
-
-        print()
-        username = input("Enter a username: ")
-        password = input("Enter a password or leave it blank for none: ")
-
-        print()
-        print(f"{username} is a wonderful name!")
-        print("Give us a second to prepare some files...")
-        sleep(2)
-
-        if password:
-            password = hashlib.new("sha256", password.encode()).hexdigest()
-        else:
-            password = None
-
-        with open("./nava.json", "w") as f:
-            json.dump(
-                {"user":
-                    {
-                        "name": username,
-                        "password": password,
-                        "bookmarks": []
-                    }
-                },
-                f)
-
-        with open("./config.json", "w") as f:
-            json.dump({
-                "browser": {
-                    "home": None,
-                    "s-engine": "google",
-                    "default_search-non-valid": True,
-                    "default_block-ad-urls": False
-                }
-            }, f)
-
-        cls()
-        print("Done!")
-        print()
-        print(f"Welcome, {username}, to your Navlii.")
-        sleep(4)
-        cls()
-
-    if not os.path.isfile("./config.json"):
-        raise FileNotFoundError("nava config was found, but user config was not. Code: c:001")
-
-    with open("./nava.json", "r") as f:
-        navadat = json.load(f)
-    with open("./config.json", "r") as f:
-        configdat = json.load(f)
-
-    return {"nava": navadat, "config": configdat}
-
-
-initdata = initNavalii()
-
-if initdata["nava"]["user"]["password"]:
-    print("This account requires a password to log in.")
-    password = input("Please input your password: ")
-    password = hashlib.new("sha256", password.encode()).hexdigest()
-
-    if password != initdata["nava"]["user"]["password"]:
-        print("Incorrect password!")
-        sleep(2)
-        sys.exit()
-    print()
+# Login/setup
+initdata = user.initNavalii()
 
 app = QApplication(sys.argv)
 QApplication.setApplicationName("Navalii Browser")
 app.setWindowIcon(QIcon("assets/navalii_icon.png"))
 
 web_view = QWebEngineView()
-
 
 if initdata["config"]["browser"]["default_block-ad-urls"]:
     if os.path.isfile("./bl.json"):
@@ -318,13 +259,17 @@ if initdata["config"]["browser"]["default_block-ad-urls"]:
 
             # Funnel all requests through this function to filter them for ads.
             blockerSites.append(*data)
-            request_interceptor = NavaRequestInterceptor()
-            web_view.page().profile().setRequestInterceptor(request_interceptor)
+
+    request_interceptor = NavaRequestInterceptor()
+    web_view.page().profile().setUrlRequestInterceptor(request_interceptor)
+
+    log.warn("You have enabled the built in ad-blocker. Please remember that this is a first line of defense."
+             " Not all ads will be blocked with this method. Add more sites to the black list by putting them into"
+             " bl.json\n")
 
 window = MainWindow(initdata["nava"], initdata["config"], web_view)
 
-print(f"Welcome to Navalii, {initdata['nava']['user']['name']}!")
-print()
+print(f"Welcome to Navalii, {initdata['nava']['user']['name']}!\n")
 print(f"Running version {window.version}")
 print("Note: This is a debug console tied to the main window. You may see many errors or warnings from Javascript.")
 print("You can ignore these unless they are crash related.")
