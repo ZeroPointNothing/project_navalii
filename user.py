@@ -1,18 +1,11 @@
 """
 Login/setup util for Navalii
 """
-import sys
 import os
 import json
 from time import sleep
+from utils import cls
 import requests
-
-
-def cls():
-    """
-    Clears the screen.
-    """
-    os.system('cls' if os.name == 'nt' else 'clear')
 
 
 class NavaRequests:
@@ -170,10 +163,11 @@ def initNavalii():
         with open("./config.json", "w") as f:
             json.dump({
                 "browser": {
-                    "home": None,
-                    "s-engine": "google",
-                    "default_search-non-valid": True,
-                    "default_block-ad-urls": False
+                    "brws_home": None,
+                    "brws_s-engine": "google",
+                    "brws_search-non-valid": True,
+                    "brws_block-ad-urls": False,
+                    "term_show-debug": False
                 }
             }, f)
 
@@ -245,6 +239,7 @@ def initNavalii():
                 navadat = json.load(f)
 
             navadat["user"]["tak_code"] = user["tak"]["code"]
+            navadat["user"]["name"] = user["key"]
 
             with open("./nava.json", "w") as f:
                 json.dump(navadat, f)

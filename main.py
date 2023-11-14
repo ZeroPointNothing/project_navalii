@@ -1,11 +1,12 @@
 import sys
 import os
-import hashlib
 import json
 import time
 import traceback
-from time import sleep
 import tkinter as tk
+from time import sleep
+from utils import Logger
+import utils
 import user
 from tkinter import messagebox
 from PyQt5.QtCore import *
@@ -35,13 +36,6 @@ blockerSites = [
 ]
 
 
-def cls():
-    """
-    Clears the screen.
-    """
-    os.system('cls' if os.name == 'nt' else 'clear')
-
-
 def show_error_message(message, trc):
     """
     Takes a traceback message and handles the error.
@@ -57,46 +51,6 @@ def show_error_message(message, trc):
     with open('traceback.txt', 'w') as f:
         f.write(f"[{time.ctime()}] Ouch!\n- - - - An exception occured: - - - -\n")
         f.write(trc)
-
-
-class Logger:
-    """
-    Logger.
-    """
-
-    def __init__(self):
-        self.name = "NAVA"
-
-    def info(self, text: str | None) -> None:
-        """
-        For general information.
-        """
-        if not text:
-            return
-
-        print(f"[{time.strftime('%H:%M:%S')}] {self.name}: " + text)
-        sys.stdout.flush()
-
-    def warn(self, text: str | None) -> None:
-        """
-        For less serious, but still noteworthy problems.
-        """
-        if not text:
-            return
-
-        print(f"[{time.strftime('%H:%M:%S')}] {self.name}:WARNING: " + text)
-        sys.stdout.flush()
-
-    def error(self, text: str | None) -> None:
-        """
-        For critical bugs, usually followed by the program halting or the process restarting.
-        """
-        if not text:
-            return
-
-        print(f"[{time.strftime('%H:%M:%S')}] {self.name}:ERROR: " + text)
-        sys.stdout.flush()
-
 
 log = Logger()
 
@@ -122,7 +76,7 @@ class MainWindow(QMainWindow):
         super(MainWindow, self).__init__()
         self.browser = web_view
 
-        self.home = "https://zeropointnothing.github.io" if not config["browser"]["home"] else config["browser"]["home"]
+        self.home = "https://zeropointnothing.github.io" if not config["browser"]["brws_home"] else config["browser"]["brws_home"]
         self.version = "v0.0.2-alpha"
         self.config = config
         self.navacfg = nava
@@ -197,7 +151,7 @@ class MainWindow(QMainWindow):
         if not url.startswith("https://"):
             # If the user has set the search-non-valid key to True, search for any non valid urls.
             # else, assume it was supposed to be a link.
-            if self.config["browser"]["default_search-non-valid"]:
+            if self.config["browser"]["brws_search-non-valid"]:
                 url = "https://www.google.com/search?q=" + url
             else:
                 url = "https://" + url
@@ -242,38 +196,52 @@ class MainWindow(QMainWindow):
 
         sys.exit()
 
+# START APPLICATION
 
-# Login/setup
-initdata = user.initNavalii()
+def launchNavalii(initdata: dict):
+    app = QApplication(sys.argv)
+    QApplication.setApplicationName("Navalii Browser")
+    app.setWindowIcon(QIcon("assets/navalii_icon.png"))
 
-app = QApplication(sys.argv)
-QApplication.setApplicationName("Navalii Browser")
-app.setWindowIcon(QIcon("assets/navalii_icon.png"))
+    web_view = QWebEngineView()
 
-web_view = QWebEngineView()
+    if initdata["config"]["browser"]["brws_block-ad-urls"]:
+        if os.path.isfile("./bl.json"):
+            with open("./bl.json", "r") as f:
+                data = json.load(f)
 
-if initdata["config"]["browser"]["default_block-ad-urls"]:
-    if os.path.isfile("./bl.json"):
-        with open("./bl.json", "r") as f:
-            data = json.load(f)
+                # Funnel all requests through this function to filter them for ads.
+                blockerSites.append(*data)
 
-            # Funnel all requests through this function to filter them for ads.
-            blockerSites.append(*data)
+        request_interceptor = NavaRequestInterceptor()
+        web_view.page().profile().setUrlRequestInterceptor(request_interceptor)
 
-    request_interceptor = NavaRequestInterceptor()
-    web_view.page().profile().setUrlRequestInterceptor(request_interceptor)
+        log.warn("You have enabled the built in ad-blocker. Please remember that this is a first line of defense."
+                 " Not all ads will be blocked with this method. Add more sites to the black list by putting them into"
+                 " bl.json\n")
 
-    log.warn("You have enabled the built in ad-blocker. Please remember that this is a first line of defense."
-             " Not all ads will be blocked with this method. Add more sites to the black list by putting them into"
-             " bl.json\n")
+    window = MainWindow(initdata["nava"], initdata["config"], web_view)
 
-window = MainWindow(initdata["nava"], initdata["config"], web_view)
+    print(f"Welcome to Navalii, {initdata['nava']['user']['name']}!\n")
+    print(f"Running version {window.version}")
+    print("Note: This is a debug console tied to the main window. You may see many errors or warnings from Javascript.")
+    print("You can ignore these unless they are crash related.")
+    print()
 
-print(f"Welcome to Navalii, {initdata['nava']['user']['name']}!\n")
-print(f"Running version {window.version}")
-print("Note: This is a debug console tied to the main window. You may see many errors or warnings from Javascript.")
-print("You can ignore these unless they are crash related.")
-print("In future versions, this console window will be hidden.")
-print()
+    sleep(3)
 
-sys.exit(app.exec_())
+    sys.exit(app.exec_())
+
+
+if __name__ == "__main__":
+    initdata = user.initNavalii()
+
+    # # Load config files.
+    # with open("./nava.json", "r") as f:
+    #     navadat = json.load(f)
+    # with open("./config.json", "r") as f:
+    #     configdat = json.load(f)
+    # initdata = {"nava": navadat, "config": configdat}
+
+    print("Launching Navalii...")
+    launchNavalii(initdata)
