@@ -23,7 +23,7 @@ class NavaRequests:
     """
 
     def __init__(self, authkey: str) -> None:
-        self.API_BASE_LOCATION = "https://navalii_api-1-d8739263.deta.app/" # Url is bugged. This will not work.
+        self.API_BASE_LOCATION = "https://navalii_api-1-z6458595.deta.app/" # Url is bugged. This will not work.
         self.API_AUTH_KEY = authkey
 
     def makeAPIRequest(self, path: str, payload: dict | None = None) -> requests.Response:
